@@ -1,6 +1,9 @@
-import puppeteer from 'puppeteer';
-import * as fs from 'fs';
-// import * as path from "path"
+/* eslint-disable no-undef */
+import puppeteer from 'puppeteer'
+import * as fs from 'fs'
+import dotenv from 'dotenv'
+import path from 'path'
+dotenv.config()
 
 class Crawler {
   protected wsChromeEndpointurl: string
@@ -9,18 +12,18 @@ class Crawler {
   public campaigns: any = []
   public filesToDownload: any = []
 
-  constructor(
+  constructor (
     mainURL: string,
     wsChromeEndpointurl: string,
-    downloadPath: string,
+    downloadPath: string
   ) {
     this.wsChromeEndpointurl = wsChromeEndpointurl
     this.downloadPath = downloadPath
     this.mainURL = mainURL
-    console.log("start")
+    console.log('start')
   }
 
-  crawl() {
+  crawl () {
     (async () => {
       const browser = await puppeteer.connect({
         browserWSEndpoint: this.wsChromeEndpointurl
@@ -33,37 +36,24 @@ class Crawler {
 
       const pagesToCrawl = await this.getAmountOfPagesToCrawl(page)
       for (let pageNumber = 1; pageNumber <= pagesToCrawl + 1; pageNumber++) {
-        console.log("Crawling page", pageNumber, "of", pagesToCrawl)
+        console.log('Crawling page', pageNumber, 'of', pagesToCrawl)
         if (pageNumber > 1) {
           this.selectPage(pageNumber, page)
         }
         await page.waitForTimeout(3000)
-        console.log("Crawling page", pageNumber)
+        console.log('Crawling page', pageNumber)
 
         const campaigns = await this.getCampaigns(page)
-        this.campaigns.push(...campaigns)
+        await this.getCampaignData(campaigns, page)
       }
-      console.log(this.campaigns)
-      console.log("qtd", this.campaigns.length)
-      console.log("last item", this.campaigns[this.campaigns.length - 1])
-
-      await this.getCampaignData(page)
-      console.log(this.filesToDownload)
-      console.log("qtd", this.filesToDownload.length)
-      console.log("last item", this.filesToDownload[this.filesToDownload.length - 1])
-
-      await this.downloadFiles(page)
-
-      console.log("Finished")
+      console.log('Finished')
 
       page.close()
     })()
-
-
   }
 
-  async selectAmountRegisterByPage(page: puppeteer.Page): Promise<void> {
-    console.log("Selecting amount of registers")
+  async selectAmountRegisterByPage (page: puppeteer.Page): Promise<void> {
+    console.log('Selecting amount of registers')
     await page.waitForTimeout(2000)
     page.click('#ddlTamañoPagina')
     await page.waitForTimeout(300)
@@ -74,25 +64,25 @@ class Crawler {
     await page.waitForTimeout(4000)
   }
 
-  async selectPage(pageNumber: number, page: puppeteer.Page) {
-    console.log("Selecting page to crawl")
+  async selectPage (pageNumber: number, page: puppeteer.Page) {
+    console.log('Selecting page to crawl')
+    await page.waitForTimeout(4000)
     await page.click(`#lblPaginacion > a:nth-child(${pageNumber})`)
     await page.waitForNavigation({
       waitUntil: 'networkidle2'
     })
-
     await page.waitForTimeout(4000)
   }
 
-  async getAmountOfPagesToCrawl(page: puppeteer.Page) {
-    console.log("Getting the amount of pages to be crawled")
+  async getAmountOfPagesToCrawl (page: puppeteer.Page) {
+    console.log('Getting the amount of pages to be crawled')
     const numberOfPages = await page.evaluate(() => {
       return document.querySelector('#lblPaginacion > a:nth-last-child(2)')!.innerHTML
     })
     return +numberOfPages
   }
 
-  async getCampaigns(page: puppeteer.Page) {
+  async getCampaigns (page: puppeteer.Page) {
     page.waitForNavigation({ waitUntil: 'networkidle2' })
     const allCampaigns = await page.evaluate(() => {
       const pageCampaigns: Array<{ campaignName: string, url: string | null }> = []
@@ -121,8 +111,8 @@ class Crawler {
     return allCampaigns
   }
 
-  async getCampaignData(page: puppeteer.Page) {
-    for (const campaign of this.campaigns) {
+  async getCampaignData (campaigns: { campaignName: string; url: string | null; }[], page: puppeteer.Page) {
+    for (const campaign of campaigns) {
       await page.goto(`${process.env.SITE}${campaign.url}`, {
         waitUntil: 'networkidle2'
       })
@@ -149,11 +139,11 @@ class Crawler {
         return data
       })
 
-      this.filesToDownload.push(...filesToDownload)
+      await this.downloadFiles(filesToDownload, page)
     }
   }
 
-  formatDate(date: string, from = 'dd-mm-yyyy') {
+  formatDate (date: string, from = 'dd-mm-yyyy') {
     if (from === 'dd-mm-yyyy') {
       const day = date.split('-')[0]
       const month = date.split('-')[1]
@@ -162,7 +152,7 @@ class Crawler {
     }
   }
 
-  translateDate(date: string) {
+  translateDate (date: string) {
     const text = date
       .replace('ene', 'jan')
       .replace('abr', 'apr')
@@ -173,11 +163,10 @@ class Crawler {
     return text
   }
 
-  async downloadFiles(page: puppeteer.Page) {
-    for (const file of this.filesToDownload) {
-      console.log('date', this.formatDate(file.campaignDate))
-      const filePath = `./files/${this.formatDate(file.campaignDate)} - ${file.campaignName
-        }`
+  async downloadFiles (filesToDownload: { campaignName: string; campaignDate: string; date: string; url: string | null; }[], page: puppeteer.Page) {
+    for (const file of filesToDownload) {
+      console.log('Campaign', this.formatDate(file.campaignDate), file.campaignName)
+      const filePath = `${process.env.DATA_FOLDER}/${this.formatDate(file.campaignDate)} - ${file.campaignName}`
       if (!fs.existsSync(`${filePath}/${new Date(this.translateDate(file.date)).toISOString().split('T')[0].substring(5, 10)}-${file.campaignName}.csv`)) {
         await page.goto(`${process.env.SITE}${file.url}`, {
           waitUntil: 'networkidle2'
@@ -190,17 +179,14 @@ class Crawler {
         }
         await (page as any)._client.send('Page.setDownloadBehavior', {
           behavior: 'allow',
-          downloadPath: this.downloadPath
+          downloadPath: path.resolve(path.join(__dirname, this.downloadPath))
         })
         await page.click('#linkDescarga')
         await page.waitForTimeout(4000)
         try {
           fs.renameSync(
-            './files/rcd.csv',
-            `${filePath}/${new Date(this.translateDate(file.date))
-              .toISOString()
-              .split('T')[0]
-              .substring(5, 10)}-${file.campaignName}.csv`
+            `${path.join(__dirname, '..', process.env.FILE_PATH!, 'rcd.csv')}`,
+            `${filePath}/${new Date(this.translateDate(file.date)).toISOString().split('T')[0].substring(5, 10)}-${file.campaignName}.csv`
           )
         } catch (e) {
           console.log(e)
@@ -210,13 +196,11 @@ class Crawler {
       }
     }
   }
-
 }
-
 
 const crawler = new Crawler(
   `${process.env.SITE}index.aspx`,
   `${process.env.WS}`,
-  './files'
+  '../files'
 )
-const data = crawler.crawl()
+crawler.crawl()
