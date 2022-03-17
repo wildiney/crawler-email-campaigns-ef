@@ -25,36 +25,35 @@ class Crawler {
 
   crawl () {
     (async () => {
-      const browser = await puppeteer.connect({
-        browserWSEndpoint: this.wsChromeEndpointurl
-      })
+      const browser = await puppeteer.connect({ browserWSEndpoint: this.wsChromeEndpointurl })
       const page = await browser.newPage()
       page.on('console', (msg) => console.log('Campanhas:', msg.text()))
       await page.goto(`${process.env.SITE}index.aspx`, { waitUntil: 'networkidle2' })
-
       await this.selectAmountRegisterByPage(page)
-
       const pagesToCrawl = await this.getAmountOfPagesToCrawl(page)
-      for (let pageNumber = 1; pageNumber <= pagesToCrawl + 1; pageNumber++) {
+      console.log('Total pages:', pagesToCrawl)
+      for (let pageNumber = 1; pageNumber <= pagesToCrawl; pageNumber++) {
         console.log('Crawling page', pageNumber, 'of', pagesToCrawl)
-        if (pageNumber > 1) {
-          this.selectPage(pageNumber, page)
-        }
         await page.waitForTimeout(3000)
-        console.log('Crawling page', pageNumber)
+
+        if (pageNumber > 1) {
+          await page.goto(`${process.env.SITE}index.aspx`, { waitUntil: 'networkidle2' })
+          await this.selectAmountRegisterByPage(page)
+          await this.selectPage(pageNumber, page)
+        }
 
         const campaigns = await this.getCampaigns(page)
         await this.getCampaignData(campaigns, page)
       }
       console.log('Finished')
 
-      page.close()
+      // page.close()
     })()
   }
 
   async selectAmountRegisterByPage (page: puppeteer.Page): Promise<void> {
     console.log('Selecting amount of registers')
-    await page.waitForTimeout(2000)
+    await page.waitForTimeout(4000)
     page.click('#ddlTamañoPagina')
     await page.waitForTimeout(300)
     await page.keyboard.press('ArrowDown')
@@ -65,12 +64,9 @@ class Crawler {
   }
 
   async selectPage (pageNumber: number, page: puppeteer.Page) {
-    console.log('Selecting page to crawl')
-    await page.waitForTimeout(4000)
-    await page.click(`#lblPaginacion > a:nth-child(${pageNumber})`)
-    await page.waitForNavigation({
-      waitUntil: 'networkidle2'
-    })
+    await page.waitForSelector(`#lblPaginacion > a:nth-child(${pageNumber + 1})`)
+    await page.click(`#lblPaginacion > a:nth-child(${pageNumber + 1})`)
+    await page.waitForNavigation({ waitUntil: 'networkidle2' })
     await page.waitForTimeout(4000)
   }
 
@@ -113,9 +109,7 @@ class Crawler {
 
   async getCampaignData (campaigns: { campaignName: string; url: string | null; }[], page: puppeteer.Page) {
     for (const campaign of campaigns) {
-      await page.goto(`${process.env.SITE}${campaign.url}`, {
-        waitUntil: 'networkidle2'
-      })
+      await page.goto(`${process.env.SITE}${campaign.url}`, { waitUntil: 'networkidle2' })
 
       const filesToDownload = await page.evaluate(() => {
         const name = (document.getElementById('lblCampaña') as HTMLSpanElement)!.innerText
@@ -141,26 +135,6 @@ class Crawler {
 
       await this.downloadFiles(filesToDownload, page)
     }
-  }
-
-  formatDate (date: string, from = 'dd-mm-yyyy') {
-    if (from === 'dd-mm-yyyy') {
-      const day = date.split('-')[0]
-      const month = date.split('-')[1]
-      const year = date.split('-')[2]
-      return `${year}-${('0' + month).slice(-2)}-${('0' + day).slice(-2)}`
-    }
-  }
-
-  translateDate (date: string) {
-    const text = date
-      .replace('ene', 'jan')
-      .replace('abr', 'apr')
-      .replace('mai', 'may')
-      .replace('ago', 'aug')
-      .replace('set', 'sep')
-      .replace('dic', 'dec')
-    return text
   }
 
   async downloadFiles (filesToDownload: { campaignName: string; campaignDate: string; date: string; url: string | null; }[], page: puppeteer.Page) {
@@ -195,6 +169,26 @@ class Crawler {
         page.waitForTimeout(1500)
       }
     }
+  }
+
+  formatDate (date: string, from = 'dd-mm-yyyy') {
+    if (from === 'dd-mm-yyyy') {
+      const day = date.split('-')[0]
+      const month = date.split('-')[1]
+      const year = date.split('-')[2]
+      return `${year}-${('0' + month).slice(-2)}-${('0' + day).slice(-2)}`
+    }
+  }
+
+  translateDate (date: string) {
+    const text = date
+      .replace('ene', 'jan')
+      .replace('abr', 'apr')
+      .replace('mai', 'may')
+      .replace('ago', 'aug')
+      .replace('set', 'sep')
+      .replace('dic', 'dec')
+    return text
   }
 }
 
